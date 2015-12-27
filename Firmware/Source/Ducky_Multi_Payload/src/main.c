@@ -4,7 +4,7 @@
 // Description	: Simple USB HID Keyboard injection
 // Date		: Nov 28, 2012
 // Author       : Snake
-// Credit	: ATMEL, Jason Applebaum keyscan's method.
+// Credit	: ATMEL, Jason Applebaum's keyscan method.
 //__________________________________________________________________________
 
 //_____  I N C L U D E S ___________________________________________________
@@ -32,7 +32,15 @@
 //_____ D E C L A R A T I O N S ____________________________________________
 
 // filename
-char *injectFile = "A:\\inject.bin";
+// filename
+static char *injectFile = "A:\\inject.bin";
+static char *vidpidFile = "A:\\vidpid.bin";
+static bool in_affect=false;
+static char serial[100];
+static serial_len=0;
+uint16_t vid;
+uint16_t pid;
+UDC_DESC_STORAGE usb_dev_desc_t udc_device_desc;
 
 // state machine enum
 typedef enum injectState {
@@ -120,6 +128,7 @@ void process_frame(uint16_t framenumber)
 
 		case state_IDLE:
 			// check switch
+			in_affect=false;
 			if( gpio_get_pin_value(GPIO_JOYSTICK_PUSH) == GPIO_JOYSTICK_PUSH_PRESSED ) {
 	
 				// debounce
@@ -226,7 +235,28 @@ int main(void) {
 		while(true) { LED_On( LED1 ); }
 	}
 		
-	nav_reset();
+ nav_reset();
+ if( nav_setcwd( vidpidFile, false, false ) ) {
+	 file_open(FOPEN_MODE_R);
+	 file_bof();
+	 
+	 vid =  file_getc() | (file_getc() << 8);
+	 pid =  file_getc() | (file_getc() << 8);
+	 serial_len = file_getc();
+	 //serial = (uint8_t *)dlmalloc(serial_len);
+	 file_read_buf(serial,sizeof(serial_len));
+	 //serial[serial_len]='\0';
+	 udc_device_desc.idVendor = (vid);
+	 udc_device_desc.idProduct = (pid);
+	 udc_device_desc.bcdDevice = 2;
+	 if (serial_len > 0){
+		 //#define USB_DEVICE_GET_SERIAL_NAME_LENGTH serial_len;
+		 #define USB_DEVICE_SERIAL_NAME serial;
+	 }
+	 file_close();
+ }
+
+ nav_reset();
 	if( !nav_setcwd( injectFile, true, false ) ) {
 		//try to open a://inject.bin else sit here 
 		while(true) { 
@@ -293,13 +323,16 @@ bool main_kbd_disable(void)
 //-------------------------------------------------------------------
 void main_kbd_change(uint8_t value) 
 {	
+	if(!in_affect){
 	//this is called when LEDs CAPS LCK, NUM LCK change
 	if (value & HID_LED_NUM_LOCK) {
 		// Here, turn on Num LED
 		LED_On( LED1 );
+		in_affect=true;
 		injectFile = "A:\\inject2.bin";	
 		nav_reset();
 		nav_setcwd( injectFile, true, false );
+		state = state_START_INJECT;
 	} else{
 		// Here, turn off Num LED
 		LED_Off( LED1 );
@@ -307,9 +340,11 @@ void main_kbd_change(uint8_t value)
 	if (value & HID_LED_CAPS_LOCK) {
 	// Here, turn on CAPS LED
 		LED_On( LED0 );
+		in_affect=true;
 		injectFile = "A:\\inject3.bin";	
 		nav_reset();
 		nav_setcwd( injectFile, true, false );
+		state = state_START_INJECT;
 	} else{
 		// Here, turn off CAPS LED
 		LED_Off( LED0 );
@@ -317,11 +352,14 @@ void main_kbd_change(uint8_t value)
 	if (value & HID_LED_SCROLL_LOCK) {
 		// Here, turn on Scroll LED
 		LED_On( LED1 );
+		in_affect=true;
 		injectFile = "A:\\inject4.bin";	
 		nav_reset();
 		nav_setcwd( injectFile, true, false );
+		state = state_START_INJECT;
 	} else {
 		// Here, turn off Scroll LED
 		LED_Off( LED1 );
 	}
+}
 }
