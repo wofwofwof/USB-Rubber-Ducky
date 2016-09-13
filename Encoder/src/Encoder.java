@@ -10,6 +10,7 @@
 // Modified:     4/18/2013 midnitesnake "added more user feedback"
 // Modified:	 5/2/2013 midnitesnake "added skip over empty lines"
 // Modified:     1/12/2014 Benthejunebug "added ALT-TAB"
+// Modified:	 9/13/2016 rbeede "added STRING_DELAY n text"
 
 import java.io.DataInputStream;
 import java.io.File;
@@ -31,7 +32,7 @@ public class Encoder {
         private static Properties keyboardProps = new Properties();
         /* contains the language layout */
         private static Properties layoutProps = new Properties();
-        private static String version = "2.6.3";
+        private static String version = "2.6.4";
         private static Boolean debug=false;
     
         public static void main(String[] args) {
@@ -47,13 +48,14 @@ public class Encoder {
                         + "   CTRL | CONTROL [key name] (ex: CTRL ESC)\n"
                         + "   CTRL-ALT [key name] (ex: CTRL-ALT DEL)\n"
                         + "   CTRL-SHIFT [key name] (ex: CTRL-SHIFT ESC)\n"
-                        + "   DEFAULT_DELAY | DEFAULTDELAY [Time in millisecond * 10] (change the delay between each command)\n"
-                        + "   DELAY [Time in millisecond * 10] (used to overide temporary the default delay)\n"
+                        + "   DEFAULT_DELAY | DEFAULTDELAY [Time in millisecond] (change the delay between each command)\n"
+                        + "   DELAY [Time in millisecond] (used to overide temporary the default delay)\n"
                         + "   GUI | WINDOWS [key name] (ex: GUI r, GUI l)\n"
                         + "   REM [anything] (used to comment your code, no obligation :) )\n"
                         + "   ALT-SHIFT (swap language)\n"
-			+ "   SHIFT [key name] (ex: SHIFT DEL)\n"
+                        + "   SHIFT [key name] (ex: SHIFT DEL)\n"
                         + "   STRING [any character of your layout]\n"
+                        + "   STRING_DELAY [Number] [any character of your layout]	(Number is ms delay between each character)\n"
                         + "   REPEAT [Number] (Repeat last instruction N times)\n"
                         + "   [key name] (anything in the keyboard.properties)";                        
 
@@ -229,7 +231,7 @@ public class Encoder {
 										instruction=last_instruction;
 										//System.out.println(Integer.toString(instruction.length));
 									}
-								if (debug) System.out.println(instruction[0]+" "+instruction[1]);
+								if (debug) System.out.println(java.util.Arrays.toString(instruction));
                                 	if (instruction[0].equals("DEFAULT_DELAY")
                                                 || instruction[0].equals("DEFAULTDELAY")) {
                                       	  defaultDelay = Integer.parseInt(instruction[1].trim());
@@ -251,6 +253,28 @@ public class Encoder {
                                         for (int j = 0; j < instruction[1].length(); j++) {
                                                 char c = instruction[1].charAt(j);
                                                 addBytes(file,charToBytes(c));
+                                        }
+                                	} else if (instruction[0].equals("STRING_DELAY")) {
+                                		final String[] twoOptions = instruction[1].split(" ", 2);
+                                		final int delayMillis = Integer.parseInt(twoOptions[0].trim());
+                                		final String userText = twoOptions[1].trim();
+                                		
+                                		if(debug)  System.out.println(delayMillis);
+                                		if(debug)  System.out.println(userText);
+                                		
+                                        for (int j = 0; j < userText.length(); j++) {
+                                                char c = userText.charAt(j);
+                                                addBytes(file,charToBytes(c));
+                                                
+                                                // Now insert the delay before the next character (and after the last is provided)
+                                                for(int counter = delayMillis; counter > 0; counter -= 0xFF) {
+                                                	file.add((byte) 0x00);
+                                                	if(counter > 0xFF) {
+                                                		file.add((byte) 0xFF);
+                                                	} else {
+                                                		file.add((byte) counter);  // Last one
+                                                	}
+                                                }
                                         }
                                 	} else if (instruction[0].equals("CONTROL")
                                                 || instruction[0].equals("CTRL")) {
@@ -293,7 +317,7 @@ public class Encoder {
                                         } else {
                                                 continue;
                                         }
-					} else if (instruction[0].equals("COMMAND-OPTION")) {
+                                    } else if (instruction[0].equals("COMMAND-OPTION")) {
                                         if (instruction.length != 1) {
                                                 file.add(strInstrToByte(instruction[1]));
                                                 file.add((byte) (strToByte(keyboardProps.getProperty("MODIFIERKEY_KEY_LEFT_GUI"))
@@ -303,22 +327,24 @@ public class Encoder {
                                         }
                                 	} else if (instruction[0].equals("ALT-SHIFT")) {
                                         if (instruction.length != 1) {
-						file.add(strInstrToByte(instruction[1]));
-						file.add((byte) (strToByte(keyboardProps.getProperty("MODIFIERKEY_LEFT_ALT"))
-                                                                | strToByte(keyboardProps.getProperty("MODIFIERKEY_SHIFT"))));
-					} else {
-						file.add(strToByte(keyboardProps.getProperty("KEY_LEFT_ALT")));
+                                            file.add(strInstrToByte(instruction[1]));
+                                            file.add((byte) (strToByte(keyboardProps.getProperty("MODIFIERKEY_LEFT_ALT"))
+                                                                | strToByte(keyboardProps.getProperty("MODIFIERKEY_SHIFT")))
+                                                    );
+                                        } else {
+                                                file.add(strToByte(keyboardProps.getProperty("KEY_LEFT_ALT")));
                                                                                                 file.add((byte) (strToByte(keyboardProps.getProperty("MODIFIERKEY_LEFT_ALT"))
-                                                                | strToByte(keyboardProps.getProperty("MODIFIERKEY_SHIFT"))));
-					}
+                                                                | strToByte(keyboardProps.getProperty("MODIFIERKEY_SHIFT")))
+                                                        );
+                                        }
                                 	} else if (instruction[0].equals("ALT-TAB")){
-					if (instruction.length == 1) {
-						file.add(strToByte(keyboardProps.getProperty("KEY_TAB")));
-						file.add(strToByte(keyboardProps.getProperty("MODIFIERKEY_LEFT_ALT")));
-					}else{
-						//do something?
-					}
-					}else if (instruction[0].equals("REM")) {
+                                        if (instruction.length == 1) {
+                                            file.add(strToByte(keyboardProps.getProperty("KEY_TAB")));
+                                            file.add(strToByte(keyboardProps.getProperty("MODIFIERKEY_LEFT_ALT")));
+                                        } else{
+                                            // do something?
+                                        }
+                                    } else if (instruction[0].equals("REM")) {
                                         /* no default delay for the comments */
                                         delayOverride = true;
                                         continue;
